@@ -640,4 +640,81 @@ class BytomClient
         return $this->httpClient->post($this->url. '/submit-work', ['block_header' => $block_header]);
     }
 
+
+    /**
+     * transactions
+     *
+     * @param string $account_id, id of account.
+     * @param string $amount,amount
+     * @param string $address,address
+     * @param string $password, signature of the password.
+     * @return array
+     */
+    public function transactions($account_id = null, $amount = 0, $address = null, $password = null)
+    {
+        $actions[0]['account_alias']    = '';
+        $actions[0]['account_id']       = $account_id;
+        $actions[0]['amount']           = $amount;
+        $actions[0]['asset_alias']      = 'BTM';
+        $actions[0]['asset_id']         = '';
+        $actions[0]['type']             = 'spend_account';
+
+        $actions[1]['address']          = $address;
+        $actions[1]['amount']           = $amount;
+        $actions[1]['asset_alias']      = 'BTM';
+        $actions[1]['asset_id']         = '';
+        $actions[1]['type']             = 'control_address';
+
+
+        $actions[2]['account_alias']    = '';
+        $actions[2]['account_id']       = $account_id;
+        $actions[2]['amount']           = 10000000;
+        $actions[2]['asset_alias']      = 'BTM';
+        $actions[2]['asset_id']         = '';
+        $actions[2]['type']             = 'spend_account';
+
+        //1. buildTransaction withoutGas
+        $build_pay = $this->buildTransaction($actions, $base_transaction = null, $ttl = 1);
+        $build_pay_data = $build_pay->getJSONDecodedBody();
+
+
+        if ($build_pay_data['status']!='success') {
+            return $build_pay;
+        }
+
+        //2. getGas
+        $gas = $this->estimateTransactionGas($build_pay_data['data']);
+        $gas_data = $gas->getJSONDecodedBody();
+
+        if ($gas_data['status']!='success') {
+            return $gas;
+        }
+
+        sleep(1);
+
+        //3. addGas buildTransaction
+        $actions[0]['amount'] = $actions[0]['amount']+$gas_data['data']['total_neu'];
+        unset($actions[2]);
+
+        $build_pay2 = $this->buildTransaction($actions,$base_transaction  =  null,$ttl  =  10);
+        $build_pay2_data = $build_pay2->getJSONDecodedBody();
+
+        if ($build_pay2_data['status']!='success') {
+            return $build_pay2;
+        }
+
+        //4. signTransaction
+        $sign_pay = $this->signTransaction($password,$build_pay2_data['data']);
+        $sign_pay_data = $sign_pay->getJSONDecodedBody();
+
+        if ($sign_pay_data['status']!='success') {
+            return $sign_pay;
+        }
+
+        //5. submitTransaction
+        $submit_pay = $this->submitTransaction($sign_pay_data['data']['transaction']['raw_transaction']);
+
+        return $submit_pay;
+    }
+
 }
